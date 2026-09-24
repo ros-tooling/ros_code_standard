@@ -39,7 +39,7 @@ This block is equivalent to `ament_lint_common`.
 ---
 repos:
   - repo: https://github.com/ros-tooling/ros_code_standard
-    rev: v0.1.0
+    rev: v0.1.1
     hooks:
       - id: ros-copyright
       - id: ros-cppcheck

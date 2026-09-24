@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ros-code-standard"
-version = "0.1.0"
+version = "0.1.1"
 description = "ROS 2 code standard pre-commit hooks: the ament_lint linters without CMake"
 requires-python = ">=3.10"
 dependencies = [
