@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ros-code-standard"
+version = "0.1.0"
+description = "ROS 2 code standard pre-commit hooks: the ament_lint linters without CMake"
+requires-python = ">=3.10"
+dependencies = [
+    # Copyright checking is ament_copyright itself, installed from the ament_lint repo.
+    "ament_copyright @ git+https://github.com/ament/ament_lint.git@0.21.2#subdirectory=ament_copyright",
+    # C / C++
+    "clang-format==19.1.7",
+    "clang-tidy==22.1.8",
+    "cppcheck==1.5.1",
+    "cpplint==2.0.2",
+    # CMake
+    "cmakelint==1.4.3",
+    # Python
+    "flake8==7.4.1",
+    "flake8-blind-except==0.2.1",
+    "flake8-builtins==3.1.0",
+    "flake8-class-newline==1.6.0",
+    "flake8-comprehensions==3.17.0",
+    "flake8-deprecated==2.3.0",
+    "flake8-import-order==0.19.2",
+    "flake8-quotes==3.4.0",
+    "mypy==2.3.1",
+    "pycodestyle==2.15.0",
+    "pydocstyle==6.3.0",
+    "pyflakes==4.0.0",
+    # XML
+    "lxml>=5.0.0",
+    # Runner
+    "identify==2.6.18",
+]
+
+[tool.setuptools.package-data]
+"ros_code_standard.checkers.clang_format" = ["clang-format"]
+"ros_code_standard.checkers.flake8" = ["ament_flake8.ini"]
+"ros_code_standard.checkers.mypy" = ["ament_mypy.ini", "ament_mypy_strict.toml"]
+"ros_code_standard.checkers.pycodestyle" = ["ament_pycodestyle.ini"]
+"ros_code_standard.checkers.uncrustify" = ["*.cfg"]
+"ros_code_standard.checkers.xmllint" = ["*.xsd"]
+
+[tool.setuptools.packages.find]
+exclude = ["test_files*", "tests*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    # Needs a tool that is not in the virtualenv, such as uncrustify on PATH. Deselect with -m 'not external'.
+    "external: test requires an external tool on PATH",
+]
+
+[project.scripts]
+ros_code_standard = "ros_code_standard.runner:main"

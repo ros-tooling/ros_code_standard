@@ -1,0 +1,85 @@
+---
+name: Test ROS Code Standard
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    name: Standardize thyself
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      # ros-uncrustify needs uncrustify on PATH. ubuntu-latest (24.04) ships 0.78.1.
+      - run: sudo apt-get install -y --no-install-recommends uncrustify
+      - uses: pre-commit/action@v3.0.1
+
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: sudo apt-get install -y --no-install-recommends uncrustify
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - run: uv run pytest
+
+  readme-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check README rev matches pyproject.toml version
+        run: |
+          VERSION=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          grep -q "rev: v$VERSION" README.md || {
+            echo "README.md rev does not match pyproject.toml version v$VERSION"
+            echo "Run 'just sync-readme' to fix."
+            exit 1
+          }
+          grep -qx "## $VERSION" CHANGELOG.md || {
+            echo "CHANGELOG.md has no '## $VERSION' section"
+            exit 1
+          }
+
+  tag-release:
+    runs-on: ubuntu-latest
+    needs: [pre-commit, pytest]
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Tag version from pyproject.toml
+        id: tag
+        run: |
+          VERSION=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          TAG="v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            echo "Tag $TAG already exists, skipping"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email 'github-actions[bot]@users.noreply.github.com'
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "Tagged $TAG"
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Release notes are the CHANGELOG.md section for this version, from its
+      # heading up to the next heading.
+      - name: Publish GitHub release
+        if: steps.tag.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |-
+          awk -v v="$VERSION" '$0 == "## " v {p=1; next} /^## /{p=0} p' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no '## $VERSION' section"; exit 1; }
+          gh release create "$TAG" --title "$TAG" --notes-file notes.md

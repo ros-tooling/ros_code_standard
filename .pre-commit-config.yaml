@@ -1,0 +1,21 @@
+---
+# This file is for running locally against the repo itself for development.
+# See README.md for how to use these hooks in your project.
+
+repos:
+  - repo: .
+    rev: HEAD
+    hooks:
+      - id: ros-copyright
+        args: [--add-missing, 'Polymath Robotics, Inc.', apache2]
+      - id: ros-cppcheck
+      - id: ros-cpplint
+      - id: ros-flake8
+      - id: ros-lint-cmake
+      - id: ros-pep257
+      - id: ros-uncrustify
+      - id: ros-xmllint
+      - id: ros-clang-format
+      - id: ros-mypy
+      - id: ros-pycodestyle
+      - id: ros-pyflakes

@@ -1,0 +1,127 @@
+---
+# One hook per ament_lint linter, so a package.xml <test_depend> list maps
+# one-to-one onto hook ids. All hooks share a language and no
+# additional_dependencies, so pre-commit builds one virtualenv for the repo.
+#
+# Unlike polymath_code_standard, no YAML anchor shares fields between hooks.
+# A types_or merged in from the anchor entry intersects with each hook's own
+# types filter and silently empties hooks such as ros-xmllint.
+
+# ---- ament_lint_common set ----
+
+- id: ros-copyright
+  name: ROS Code Standard [copyright]
+  language: python
+  description: >
+    ament_copyright. Checks copyright notices and license headers in C, C++, CMake,
+    and Python sources, plus LICENSE and CONTRIBUTING.md at the repo root.
+    Accepts args: [--add-missing, "<copyright holder>", <license name>]. Also accepts [--verbose].
+  entry: ros_code_standard copyright
+  types_or: [c, c++, cmake, python]
+
+- id: ros-cppcheck
+  name: ROS Code Standard [cppcheck]
+  language: python
+  description: >
+    cppcheck static analysis with the ament_cppcheck flag set.
+    Accepts args: [--language, c++], [--libraries, "a,b"], [--include-dirs, "a,b"].
+  entry: ros_code_standard cppcheck
+  types_or: [c, c++]
+
+- id: ros-cpplint
+  name: ROS Code Standard [cpplint]
+  language: python
+  description: >
+    cpplint with the ament_cpplint filters, line length 100, and ROS header guard convention.
+    Accepts args: [--filters=-category], [--linelength, "100"], [--root, PATH].
+  entry: ros_code_standard cpplint
+  types_or: [c, c++]
+
+- id: ros-flake8
+  name: ROS Code Standard [flake8]
+  language: python
+  description: >
+    flake8 with the ament_flake8 plugin set and configuration.
+    Accepts args: [--linelength, "99"].
+  entry: ros_code_standard flake8
+  types: [python]
+
+- id: ros-lint-cmake
+  name: ROS Code Standard [lint_cmake]
+  language: python
+  description: >
+    cmakelint with the ament_lint_cmake line length of 140.
+    Accepts args: [--filters=-category,+category].
+  entry: ros_code_standard lint_cmake
+  # .cmake.in files have no identify tag, so match on filename instead of types.
+  files: (^|/)(CMakeLists\.txt|[^/]+\.cmake(\.in)?)$
+
+- id: ros-pep257
+  name: ROS Code Standard [pep257]
+  language: python
+  description: >
+    pydocstyle with the ament_pep257 ignore list.
+    Accepts args: [--ignore, CODES], [--select, CODES], [--convention, NAME],
+    [--add-ignore, CODES], [--add-select, CODES].
+  entry: ros_code_standard pep257
+  types: [python]
+
+- id: ros-uncrustify
+  name: ROS Code Standard [uncrustify]
+  language: python
+  description: >
+    uncrustify with the ament_code_style configuration. Reformats in place and fails
+    so you re-stage. Requires uncrustify on PATH. Accepts args: [--linelength, "100"]
+    and [--language, C++].
+  entry: ros_code_standard uncrustify
+  types_or: [c, c++]
+
+- id: ros-xmllint
+  name: ROS Code Standard [xmllint]
+  language: python
+  description: XML well-formedness and schema validation, with bundled ROS package.xml schemas.
+  entry: ros_code_standard xmllint
+  types: [xml]
+
+# ---- optional linters ----
+
+- id: ros-clang-format
+  name: ROS Code Standard [clang_format]
+  language: python
+  description: clang-format with the ament_clang_format style. Reformats in place and fails so you re-stage.
+  entry: ros_code_standard clang_format
+  types_or: [c, c++]
+
+- id: ros-clang-tidy
+  name: ROS Code Standard [clang_tidy]
+  language: python
+  description: >
+    clang-tidy against a colcon build directory. Experimental. Requires args: [--build-dir, <path>]
+    pointing at a directory that contains compile_commands.json files.
+  entry: ros_code_standard clang_tidy
+  types_or: [c, c++]
+
+- id: ros-mypy
+  name: ROS Code Standard [mypy]
+  language: python
+  description: >
+    mypy with the ament_mypy configuration.
+    Accepts args: [--strict] for the ament strict profile.
+  entry: ros_code_standard mypy
+  types: [python]
+
+- id: ros-pycodestyle
+  name: ROS Code Standard [pycodestyle]
+  language: python
+  description: >
+    pycodestyle with the ament_pycodestyle configuration.
+    Accepts args: [--linelength, "99"].
+  entry: ros_code_standard pycodestyle
+  types: [python]
+
+- id: ros-pyflakes
+  name: ROS Code Standard [pyflakes]
+  language: python
+  description: pyflakes.
+  entry: ros_code_standard pyflakes
+  types: [python]
