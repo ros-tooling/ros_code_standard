@@ -33,9 +33,9 @@ Version studied: `ament_lint` 0.21.2 (`rolling`, commit `36ceda18`).
 |---|---|---|---|---|
 | `ament_cmake_copyright` | `ament_copyright` itself | license header templates | yes | git subdirectory install, works |
 | `ament_cmake_cppcheck` | cppcheck | CLI flags | yes | `cppcheck` wheel (cppcheck 2.17) |
-| `ament_cmake_cpplint` | cpplint (forked 1.5.5) | filter list, line length 100, header guard patch | yes | `cpplint` 2.0.x |
+| `ament_cmake_cpplint` | `ament_cpplint` itself (modified cpplint fork) | filter list, line length 100, header guard patch | yes | git subdirectory install, works |
 | `ament_cmake_flake8` | flake8 + 7 plugins | `ament_flake8.ini` | yes | all on PyPI |
-| `ament_cmake_lint_cmake` | cmakelint (forked) | line length 140 | yes | `cmakelint` 1.4.3 |
+| `ament_cmake_lint_cmake` | `ament_lint_cmake` itself (modified cmakelint fork) | line length 140 | yes | git subdirectory install, works |
 | `ament_cmake_pep257` | pydocstyle | ignore list | yes | `pydocstyle` 6.3 |
 | `ament_cmake_uncrustify` | uncrustify | `ament_code_style_0_72.cfg`, `ament_code_style_0_78.cfg` | yes | **no wheel, no Linux release binary** |
 | `ament_cmake_xmllint` | libxml2 `xmllint` | none, schemas fetched from network | yes | replaced by `lxml` |
@@ -47,6 +47,14 @@ Version studied: `ament_lint` 0.21.2 (`rolling`, commit `36ceda18`).
 | `ament_cmake_pclint` | PC-lint Plus | none | no | **proprietary, not translated** |
 
 ## Decisions
+
+### Parity first, then better
+
+The first release reproduces what `colcon test` reports today, finding for finding.
+A package that is green under `ament_lint_common` on rolling must be green under these hooks, so maintainers can swap the mechanism without a reformatting or fixing pass.
+Improvements over ament's behavior, such as newer checks or hermetic configuration, come after parity is established and are recorded as open questions in [PLAN.md](./PLAN.md).
+
+This principle was set after the first pass ran on `ros2/rcpputils`: cpplint 2.0 from PyPI reported `build/c++17`, a new `whitespace/newline` rule that contradicts the ament uncrustify style, and wider include-what-you-use tables, none of which ament's own cpplint reports.
 
 ### One hook per ament linter
 
@@ -73,34 +81,32 @@ Each checker calls the upstream tool with the ament configuration shipped as pac
 Configs are passed by absolute path (`flake8 --config`, `pycodestyle --config`, `clang-format --style=file:`, `uncrustify -c`, `mypy --config-file`) so nothing is written into the consuming repository.
 The `.ruff.toml` and `.cpplint.cfg` root-copy trick from polymath_code_standard is not needed here.
 
-Two ament forks carry behavior that the config alone does not:
+### Where ament's behavior is the tool, run ament's tool
 
-- **cpplint header guards.**
-  ament patches `GetHeaderGuardCPPVariable` so `include/pkg/foo.hpp` becomes `PKG__FOO_HPP_` (double underscore between path parts), and it groups files by the nearest `include`, `src`, or `test` ancestor to pass as `--root`.
-  The `ros-cpplint` checker imports `cpplint`, applies the same patch, and does the same grouping.
-  cpplint 2.0.x still exposes the same function, verified during design.
-- **cmakelint filenames.**
-  ament overrides `IsValidFile` so `.cmake.in` files are linted.
-  Upstream cmakelint refuses them.
-  The checker applies the same one-line override.
+Three ament packages cannot be reproduced by "upstream tool plus config", so the hooks install them from the `ament_lint` repository and call their console scripts:
 
-### Copyright reuses `ament_copyright` directly
+- **`ament_copyright`** is not a wrapper around anything.
+  Its parser, its license header templates, and its `--add-missing` mode are the tool.
+- **`ament_cpplint`** vendors a modified cpplint fork based on a post-1.5.5 upstream commit: NOLINT accepts clang-analyzer categories, `.hh` counts as a project header for include order, `using namespace std::literals` and `std::placeholders` are allowed, and namespace-closing comments are matched differently.
+  On top of that it patches the header guard convention (`include/pkg/foo.hpp` guards on `PKG__FOO_HPP_`) and groups files by their nearest `include`, `src`, or `test` ancestor to pass as `--root`.
+  No PyPI cpplint release matches: 1.5.5 lacks the fork's changes and 2.0 adds checks ament never had.
+- **`ament_lint_cmake`** vendors a modified cmakelint fork: a closing parenthesis may sit at the opening line's indentation, an over-long line is ignored when it is a single string, filter parsing differs, and in-file `# lint_cmake:` pragmas are its own implementation.
 
-`ament_copyright` is not a wrapper around another tool.
-Its parser, its license header templates, and its `--add-missing` mode are the tool.
-Reimplementing them would drift from the ROS 2 canon for no gain.
+A first implementation ported the cpplint patch and grouping onto cpplint 2.0.2 and applied the cmakelint `IsValidFile` override onto cmakelint 1.4.3.
+It was replaced by the wrappers after the parity check on rcpputils.
 
-pip can install a setuptools package from a subdirectory of a git repo, and polymath_code_standard already depends on two packages that way.
-Verified during design:
+pip can install a setuptools package from a subdirectory of a git repo, and polymath_code_standard already depends on two packages that way:
 
 ```
 ament_copyright @ git+https://github.com/ament/ament_lint.git@0.21.2#subdirectory=ament_copyright
+ament_cpplint @ git+https://github.com/ament/ament_lint.git@0.21.2#subdirectory=ament_cpplint
+ament_lint_cmake @ git+https://github.com/ament/ament_lint.git@0.21.2#subdirectory=ament_lint_cmake
 ```
 
-installs cleanly with its console script and license entry points intact.
-It has no dependency on the `ament_lint` helper package.
+All three install with their console scripts intact and none depends on the `ament_lint` helper package.
+The pin is the `ament_lint` release, so bumping it is how these hooks track ROS 2.
 
-The hook passes staged source files through to `ament_copyright`.
+The copyright hook passes staged source files through to `ament_copyright`.
 Because ament's crawler only checks `LICENSE` and `CONTRIBUTING.md` when it walks a repository root, the checker appends those two files when they exist in the working directory so the repo-level check is preserved.
 
 ### Formatters fix in place, then fail
@@ -210,9 +216,9 @@ ros_code_standard/
     checkers/
       copyright.py                  ament_copyright passthrough
       cppcheck.py
-      cpplint/__init__.py           header guard patch, root grouping
+      cpplint/__init__.py           ament_cpplint passthrough
       flake8/__init__.py, ament_flake8.ini
-      lint_cmake.py
+      lint_cmake.py                 ament_lint_cmake passthrough
       pep257.py
       uncrustify/__init__.py, ament_code_style_0_72.cfg, ament_code_style_0_78.cfg
       xmllint/__init__.py, package_format2.xsd, package_format3.xsd
@@ -250,5 +256,6 @@ Add `.pre-commit-config.yaml` with the hooks that match the removed test depende
 
 - Reproducing xUnit output or CTest labels.
 - Supporting `AMENT_IGNORE`.
-- Byte-for-byte parity with the linter versions in a specific ROS distribution.
-  Tools are pinned to current PyPI releases, and the pins are the standard.
+- Byte-for-byte parity with the Python tool versions in a specific ROS distribution.
+  flake8, pydocstyle, pycodestyle, pyflakes, and mypy are pinned to current PyPI releases with ament's configs.
+  The ament-owned tools (copyright, cpplint, lint_cmake) are pinned to an `ament_lint` release and match it exactly.

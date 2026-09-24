@@ -12,6 +12,16 @@ version = "0.21.2"
 source = { git = "https://github.com/ament/ament_lint.git?subdirectory=ament_copyright&rev=0.21.2#1532051a90359736a365d0e5122f69bb612ed1e0" }
 
 [[package]]
+name = "ament-cpplint"
+version = "0.21.2"
+source = { git = "https://github.com/ament/ament_lint.git?subdirectory=ament_cpplint&rev=0.21.2#1532051a90359736a365d0e5122f69bb612ed1e0" }
+
+[[package]]
+name = "ament-lint-cmake"
+version = "0.21.2"
+source = { git = "https://github.com/ament/ament_lint.git?subdirectory=ament_lint_cmake&rev=0.21.2#1532051a90359736a365d0e5122f69bb612ed1e0" }
+
+[[package]]
 name = "ast-serialize"
 version = "0.11.2"
 source = { registry = "https://pypi.org/simple" }
@@ -117,15 +127,6 @@ wheels = [
 ]
 
 [[package]]
-name = "cmakelint"
-version = "1.4.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/9f/46/9b6c39837be138179347611ec8cb79bf00ff3b54966ee8b63e031a05cf76/cmakelint-1.4.3.tar.gz", hash = "sha256:98a1e485318b41eeaf4dee3469ca3039d4745985353ecea208d6dd2c1204c71d", size = 69578, upload-time = "2024-05-12T10:43:36.391Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/24/60911dd02598ef4e1b38ff545d1eca33c66158cdca03b20b85575acc5588/cmakelint-1.4.3-py3-none-any.whl", hash = "sha256:d812accc44d4b34bdf115c5be230c7d80566f333c9a4a60e81fd5a54bf953f9e", size = 13083, upload-time = "2024-05-12T10:43:34.374Z" },
-]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -160,15 +161,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d8/f1/d46f09402e76ac878a6e458008cb9729bbe6cb2733c8f1b0c480aa15f5bb/cppcheck-1.5.1-py3-none-win32.whl", hash = "sha256:8f4733aee0dda4009725caf7592a7843fc022d043381f26de85584de84e7de29", size = 2491577, upload-time = "2025-04-18T05:30:36.419Z" },
     { url = "https://files.pythonhosted.org/packages/d0/3f/603d9db83b20fb170345483400cd1871df1bb31338af2288e49a7b431267/cppcheck-1.5.1-py3-none-win_amd64.whl", hash = "sha256:00678b255018773a3c70a106bf2112a21e05d29b2325102ea417f495944ecce9", size = 2725180, upload-time = "2025-04-18T05:30:37.491Z" },
     { url = "https://files.pythonhosted.org/packages/c5/69/a6eb66788ccc03c58f277b59c851b38485f0cf0fb1c9995680d8dc99d5b2/cppcheck-1.5.1-py3-none-win_arm64.whl", hash = "sha256:abb8265e3f692c1734db048d8df6fc380b4bbbbd0bd3f4697dbbc7a484181467", size = 2608967, upload-time = "2025-04-18T05:30:39.062Z" },
-]
-
-[[package]]
-name = "cpplint"
-version = "2.0.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c5/83/47a9e7513ba4d943a9dac2f6752b444377c91880f4f4968799b4f42d89cc/cpplint-2.0.2.tar.gz", hash = "sha256:8a5971e4b5490133e425284f0c566c7ade0b959e61018d2c9af3ff7f357ddc57", size = 373781, upload-time = "2025-04-08T01:22:26.017Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/65/08d3a5039b565231c501b31d1a973d4222e9803c03b2c31a9c08bdec3e30/cpplint-2.0.2-py3-none-any.whl", hash = "sha256:7ec188b5a08e604294ae7e7f88ec3ece2699de857f0533b305620c8cf237cad5", size = 81987, upload-time = "2025-04-08T01:22:24.101Z" },
 ]
 
 [[package]]
@@ -763,11 +755,11 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "ament-copyright" },
+    { name = "ament-cpplint" },
+    { name = "ament-lint-cmake" },
     { name = "clang-format" },
     { name = "clang-tidy" },
-    { name = "cmakelint" },
     { name = "cppcheck" },
-    { name = "cpplint" },
     { name = "flake8" },
     { name = "flake8-blind-except" },
     { name = "flake8-builtins" },
@@ -792,11 +784,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ament-copyright", git = "https://github.com/ament/ament_lint.git?subdirectory=ament_copyright&rev=0.21.2" },
+    { name = "ament-cpplint", git = "https://github.com/ament/ament_lint.git?subdirectory=ament_cpplint&rev=0.21.2" },
+    { name = "ament-lint-cmake", git = "https://github.com/ament/ament_lint.git?subdirectory=ament_lint_cmake&rev=0.21.2" },
     { name = "clang-format", specifier = "==19.1.7" },
     { name = "clang-tidy", specifier = "==22.1.8" },
-    { name = "cmakelint", specifier = "==1.4.3" },
     { name = "cppcheck", specifier = "==1.5.1" },
-    { name = "cpplint", specifier = "==2.0.2" },
     { name = "flake8", specifier = "==7.4.1" },
     { name = "flake8-blind-except", specifier = "==0.2.1" },
     { name = "flake8-builtins", specifier = "==3.1.0" },

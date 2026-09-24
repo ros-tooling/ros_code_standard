@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the lint_cmake checker: the .cmake.in override, line length 140, hermeticity."""
+"""Tests for the lint_cmake checker, a thin wrapper over the ament_lint_cmake console script."""
 
 import argparse
 from pathlib import Path
 
-from ros_code_standard.checkers.lint_cmake import LINE_LENGTH, LintCmakeGroup
+from ros_code_standard.checkers.lint_cmake import LintCmakeGroup
 from ros_code_standard.runner import main
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -67,11 +67,26 @@ def test_bad_cmake_file_fails(tmp_path):
     assert main(['lint_cmake', str(path)]) == 1
 
 
-# --- ament's IsValidFile override: .cmake.in is linted, not skipped ---
+def test_line_over_140_characters_fails(tmp_path):
+    path = tmp_path / 'CMakeLists.txt'
+    path.write_text('# ' + 'x' * 148 + '\n')
+    result = _run([path])
+    assert not result.passed
+    assert 'linelength' in result.output
+
+
+def test_line_of_120_characters_passes(tmp_path):
+    """Upstream cmakelint defaults to 80; ament_lint_cmake defaults the line length to 140."""
+    path = tmp_path / 'CMakeLists.txt'
+    path.write_text('# ' + 'x' * 118 + '\n')
+    assert _run([path]).passed
+
+
+# --- ament's IsValidFile widening: .cmake.in is linted, not silently skipped ---
 
 
 def test_bad_cmake_in_file_fails(tmp_path):
-    """Upstream cmakelint prints 'Ignoring file' and passes here; ament and this hook do not."""
+    """Upstream cmakelint prints 'Ignoring file' and exits 0 here; the ament fork does not."""
     path = tmp_path / 'config.cmake.in'
     path.write_text(MIXED_CASE)
     result = _run([path])
@@ -80,28 +95,52 @@ def test_bad_cmake_in_file_fails(tmp_path):
     assert 'Ignoring file' not in result.output
 
 
-# --- line length is ament's 140, not cmakelint's 80 ---
+# --- fork behaviors that upstream cmakelint 1.4.3 does not have ---
 
 
-def test_line_length_is_aments_default():
-    assert LINE_LENGTH == 140
+def test_over_long_line_holding_only_a_string_is_allowed(tmp_path):
+    """
+    A regression test for one of the ament fork's own rules.
 
-
-def test_line_of_120_characters_passes(tmp_path):
+    The fork exempts an over-long line from the line length check when the line
+    holds nothing but a single string, on the grounds that a string cannot be
+    split. Upstream cmakelint 1.4.3 reports linelength here, so this passing is
+    proof that the hook is running ament's fork and not the PyPI release.
+    """
     path = tmp_path / 'CMakeLists.txt'
-    path.write_text('# ' + 'x' * 118 + '\n')
+    path.write_text('set(LONG_STRING\n  "' + 'x' * 150 + '")\n')
     assert _run([path]).passed
 
 
-def test_line_of_150_characters_fails(tmp_path):
+def test_over_long_message_string_is_still_reported(tmp_path):
+    """The same fork rule makes an exception for message(), whose strings can be split."""
     path = tmp_path / 'CMakeLists.txt'
-    path.write_text('# ' + 'x' * 148 + '\n')
+    path.write_text('message(STATUS\n  "' + 'x' * 150 + '")\n')
     result = _run([path])
     assert not result.passed
     assert 'linelength' in result.output
 
 
+def test_closing_parenthesis_at_the_opening_indentation_is_allowed(tmp_path):
+    """
+    The fork allows a closing parenthesis at the indentation of the opening line.
+
+    Upstream cmakelint 1.4.3 has since grown its own fix for this, so it is not
+    a divergence any more, but it is still the ROS 2 house style and has to pass.
+    """
+    path = tmp_path / 'CMakeLists.txt'
+    path.write_text('if(TRUE)\n  install(TARGETS foo\n    DESTINATION lib\n  )\nendif()\n')
+    assert _run([path]).passed
+
+
 # --- filters ---
+
+
+def test_filters_reach_the_command_line(tmp_path):
+    path = tmp_path / 'CMakeLists.txt'
+    path.write_text(MIXED_CASE)
+    result = _run([path], filters='-readability/mixedcase')
+    assert '--filters=-readability/mixedcase' in result.cmd
 
 
 def test_filters_suppress_a_category(tmp_path):
@@ -110,42 +149,35 @@ def test_filters_suppress_a_category(tmp_path):
     assert _run([path], filters='-readability/mixedcase').passed
 
 
+def test_no_filters_argument_is_passed_when_the_option_is_unused(tmp_path):
+    path = tmp_path / 'CMakeLists.txt'
+    path.write_text(MIXED_CASE)
+    result = _run([path])
+    assert not any(arg.startswith('--filters') for arg in result.cmd)
+
+
 def test_filters_default_to_nothing_suppressed(tmp_path):
     path = tmp_path / 'CMakeLists.txt'
     path.write_text(MIXED_CASE)
     assert not _run([path], filters='').passed
 
 
-# --- hermeticity: no .cmakelintrc is read ---
-
-
-def test_cmakelintrc_in_the_working_directory_is_ignored(tmp_path, monkeypatch):
-    """A cmakelint would read ./.cmakelintrc by default; --config=None stops it."""
-    (tmp_path / '.cmakelintrc').write_text('filter=-readability/mixedcase\n')
-    path = tmp_path / 'CMakeLists.txt'
-    path.write_text(MIXED_CASE)
-    monkeypatch.chdir(tmp_path)
-    assert not _run([path]).passed
-
-
-def test_cmakelintrc_in_the_home_directory_is_ignored(tmp_path, monkeypatch):
-    home = tmp_path / 'home'
-    home.mkdir()
-    (home / '.cmakelintrc').write_text('filter=-readability/mixedcase\n')
-    path = tmp_path / 'CMakeLists.txt'
-    path.write_text(MIXED_CASE)
-    monkeypatch.setenv('HOME', str(home))
-    assert not _run([path]).passed
+def test_a_leading_dash_filters_value_needs_the_equals_form():
+    """A bare -category looks like an option to argparse, so the value has to be attached."""
+    argv = ['lint_cmake', '--filters=-readability/mixedcase']
+    assert main(argv) == 0
 
 
 # --- no files ---
 
 
 def test_no_files_is_a_skip():
+    """ament_lint_cmake would default to crawling '.', so an empty list must not reach it."""
     assert main(['lint_cmake']) == 0
 
 
-def test_no_files_reports_as_skipped():
+def test_no_files_reports_as_skipped_without_running_the_tool():
     result = _run([])
     assert result.skipped
     assert result.passed
+    assert result.cmd is None

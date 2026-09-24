@@ -15,38 +15,32 @@
 """
 CMake style checking, the ament_lint_cmake check.
 
-`ament_lint_cmake` vendors cmakelint and drives it in process so that it can
-override two things.
-This checker keeps both overrides and diverges on a third:
+`ament_lint_cmake` vendors a modified fork of cmakelint, not the upstream
+release, so calling PyPI cmakelint with ament's flags does not reproduce ament's
+findings.
+The fork differs in at least four ways: it allows a closing parenthesis to sit
+at the indentation level of the opening line, it ignores an over-long line when
+that line holds nothing but a single string, it parses filters differently, and
+it has its own in-file pragma implementation.
+It also widens `IsValidFile` so `*.cmake.in` templates are linted instead of
+silently skipped, and it defaults the line length to 140.
 
-- `cmakelint.IsValidFile` rejects anything that is not `CMakeLists.txt` or
-  `*.cmake`, and quietly skips the file instead of failing.
-  ament replaces that function so `*.cmake.in` templates are linted too.
-  There is no command line option for it, so the checker runs cmakelint in a
-  child interpreter with the same one line override rather than through its
-  console script.
-- the line length is 140, ament's default, not cmakelint's own 80.
-- cmakelint and ament both read `~/.cmakelintrc` (and `./.cmakelintrc`, and
-  `$XDG_CONFIG_HOME/cmakelintrc`) when no `--config` is given, which would make
-  the result depend on the developer's machine.
-  The checker passes `--config=None`, the spelling cmakelint understands as
-  "read no configuration file", so the standard is the standard everywhere.
+So this checker wraps the `ament_lint_cmake` console script directly, the same
+way the copyright checker wraps `ament_copyright`.
+Findings match `colcon test` exactly, and the line length and the `.cmake.in`
+handling come from ament rather than from anything spelled out here.
+
+One known non-hermetic behavior is kept for that parity: ament, like upstream
+cmakelint, reads `.cmakelintrc` from the working directory, from
+`$XDG_CONFIG_DIR`, and from the developer's home directory when no `--config`
+is given, so a developer's rc file can change the result.
+Suppressing that would be a divergence from ament, so it is left alone for now
+and tracked as an improvement for a later phase.
 """
 
 import argparse
-import sys
 
-from ros_code_standard.checker import check_group, CheckerGroup, Result, run
-
-# ament_lint_cmake's default, and the ROS 2 CMake line length.
-LINE_LENGTH = 140
-
-# Run cmakelint's own main() with IsValidFile widened so .cmake.in is linted.
-BOOTSTRAP = (
-    'import sys; import cmakelint.main as cmakelint; '
-    'cmakelint.IsValidFile = lambda filename: True; '
-    'sys.exit(cmakelint.main())'
-)
+from ros_code_standard.checker import check_group, CheckerGroup, Result
 
 
 @check_group
@@ -62,20 +56,13 @@ class LintCmakeGroup(CheckerGroup):
             metavar='FILTERS',
             help=(
                 'Comma separated cmakelint category filters, each prefixed with + or -, '
-                'for example "-readability/mixedcase,-convention/filename". '
-                'Same meaning as the FILTERS argument of ament_lint_cmake.'
+                'passed through to ament_lint_cmake. Same meaning as the FILTERS argument '
+                'of the ament_lint_cmake CMake macro. A value that starts with a dash has '
+                'to be written as --filters=-category, since argparse would otherwise read '
+                'it as an option.'
             ),
         )
 
     def run(self, args: argparse.Namespace) -> list[Result]:
-        cmd = [
-            sys.executable,
-            '-I',
-            '-c',
-            BOOTSTRAP,
-            '--config=None',
-            f'--linelength={LINE_LENGTH}',
-        ]
-        if args.filters:
-            cmd.append(f'--filter={args.filters}')
-        return [run('lint_cmake', cmd, args.files)]
+        extra = [f'--filters={args.filters}'] if args.filters else []
+        return [self._check('ament_lint_cmake', extra, args.files, name='lint_cmake')]

@@ -82,7 +82,33 @@ endif()
 
 If the package listed individual `ament_cmake_<tool>` dependencies instead of `ament_lint_common`, add the matching `ros-<tool>` hook for each one.
 
-Files that were excluded with `AMENT_LINT_AUTO_FILE_EXCLUDE` or an `AMENT_IGNORE` marker need a pre-commit `exclude:` pattern on the relevant hook instead.
+Packages that call the linters explicitly carry per-linter options that map onto hook fields:
+
+| CMake | pre-commit |
+|---|---|
+| `ament_cpplint(EXCLUDE path ...)`, `AMENT_LINT_AUTO_FILE_EXCLUDE`, `AMENT_IGNORE` | `exclude: ^path` on that hook |
+| `ament_cppcheck(LANGUAGE c++)`, `ament_uncrustify(LANGUAGE c++)` | `args: [--language, c++]` |
+| `ament_cpplint(FILTERS -a -b)`, `ament_lint_cmake(FILTERS ...)` | `args: [--filters=-a,-b]` |
+| `ament_cpplint(MAX_LINE_LENGTH 120)`, `ament_flake8(MAX_LINE_LENGTH 120)` | `args: [--linelength, '120']` |
+| `ament_cppcheck(INCLUDE_DIRS a b)`, `ament_cppcheck(LIBRARIES a b)` | `args: [--include-dirs, 'a,b', --libraries, 'a,b']` |
+| `AMENT_LINT_AUTO_EXCLUDE ament_cmake_<tool>` | leave `ros-<tool>` out of the hook list |
+
+For example, `rcpputils` excludes a vendored header from four linters and forces C++ for two:
+
+```yaml
+- id: ros-copyright
+  exclude: ^include/rcpputils/tl_expected/
+- id: ros-cppcheck
+  args: [--language, c++]
+  exclude: ^include/rcpputils/tl_expected/
+- id: ros-cpplint
+  exclude: ^include/rcpputils/tl_expected/
+- id: ros-lint-cmake
+- id: ros-uncrustify
+  args: [--language, C++]
+  exclude: ^include/rcpputils/tl_expected/
+- id: ros-xmllint
+```
 
 ## First-time use
 
@@ -197,18 +223,27 @@ This hook always runs, so expect findings that `colcon test` never showed you.
 
 ### `ros-cpplint`
 
-Runs cpplint with the ament_cpplint filter set, a line length of 100, and the ROS header guard convention, so `include/my_pkg/foo.hpp` must guard on `MY_PKG__FOO_HPP_`.
-Files are grouped by their nearest `include`, `src`, or `test` ancestor and each group is linted with that directory as cpplint's `--root`, so the guard is correct for every package in a multi-package repository.
+Runs `ament_cpplint`, the ROS 2 linter itself, over the staged C and C++ files.
+It is not PyPI cpplint.
+ament vendors a modified fork of cpplint 1.5.5, and the checks cpplint 2.0 added do not match ROS 2 style: a package that passes `colcon test` reports `build/c++17`, `whitespace/newline`, and a wider `build/include_what_you_use` under the PyPI release.
+Because this hook calls `ament_cpplint`, its findings, filter set, line length of 100, `--root` grouping by the nearest `include`, `src`, or `test` ancestor, and the ROS header guard convention (`include/my_pkg/foo.hpp` guards on `MY_PKG__FOO_HPP_`) are identical to what `colcon test` reports.
 
 **Optional:**
 
-- `--filters=FILTER,FILTER` -- Extra cpplint category filters, appended to the ament defaults
-- `--linelength N` -- Maximum line length, default 100
-- `--root PATH` -- Use this cpplint root for every file instead of the computed one
+- `--filters=FILTER,FILTER` -- Extra cpplint category filters, appended to ament's defaults
+- `--linelength N` -- Maximum line length. ament uses 100
+- `--root PATH` -- Use this cpplint root for every file instead of the one ament computes from the path
 
 ```yaml
 - id: ros-cpplint
   args: [--filters=-build/include_order, --linelength, '120']
+```
+
+Vendored or generated C++ that a package excluded from its CMake lint test needs an `exclude:` pattern here, since the hook only sees a file list:
+
+```yaml
+- id: ros-cpplint
+  exclude: ^include/rcpputils/tl_expected/
 ```
 
 ---
@@ -231,14 +266,18 @@ The configuration is passed with `--config`, which flake8 treats as authoritativ
 
 ### `ros-lint-cmake`
 
-Runs `cmakelint` over `CMakeLists.txt`, `*.cmake`, and `*.cmake.in` files with `ament_lint_cmake`'s line length of 140.
-Like ament, it widens cmakelint's filename check so `*.cmake.in` templates are linted instead of silently skipped.
-Unlike ament, it passes `--config=None` so no `.cmakelintrc` is read from the working directory, `$XDG_CONFIG_DIR`, or your home directory: the standard is the same on every machine.
-Per-file `# lint_cmake: <filters>` pragmas still work.
+Runs `ament_lint_cmake` over `CMakeLists.txt`, `*.cmake`, and `*.cmake.in` files.
+This is `ament_lint_cmake` itself, not PyPI cmakelint with ament's flags.
+The ament package vendors a modified fork of cmakelint, so running the real thing means the findings match `colcon test` exactly, and the 140-character line length, the ROS 2 parenthesis and string rules, and the handling of `*.cmake.in` templates all come from ament.
+Per-file `# lint_cmake: <filters>` pragmas work as they do under `colcon test`.
+
+> [!NOTE]
+> Like ament, this hook reads `.cmakelintrc` from the working directory, from `$XDG_CONFIG_DIR`, and from your home directory when present, so a personal rc file can change the result.
+> That is kept for parity with `colcon test`.
 
 **Optional:**
 
-- `--filters=FILTERS` -- Comma-separated cmakelint category filters, each prefixed with `+` or `-`. Same meaning as the `FILTERS` argument of `ament_lint_cmake`.
+- `--filters=FILTERS` -- Comma-separated cmakelint category filters, each prefixed with `+` or `-`, passed straight to `ament_lint_cmake`. Same meaning as the `FILTERS` argument of the CMake macro
 
 ```yaml
 - id: ros-lint-cmake
@@ -447,6 +486,6 @@ No arguments.
   ament only reports.
 - **No xUnit output.**
   The exit code is the result.
-- **Current tool versions.**
-  Tools are pinned to current PyPI releases in this repo's `pyproject.toml`, not to the versions in a ROS distribution.
-  cpplint is 2.0.x where ament bundles a 1.5.5 fork, and cppcheck is 2.17 where ament refuses to run 2.x at all.
+- **ament's own tools where it matters.**
+  `ros-copyright`, `ros-cpplint`, and `ros-lint-cmake` run the `ament_lint` 0.21.2 packages themselves, so their findings match `colcon test` exactly.
+  The Python linters and cppcheck are current PyPI releases with ament's configuration; cppcheck is 2.17 where ament refuses to run 2.x at all.

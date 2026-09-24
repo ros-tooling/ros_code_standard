@@ -8,15 +8,16 @@ version = "0.1.0"
 description = "ROS 2 code standard pre-commit hooks: the ament_lint linters without CMake"
 requires-python = ">=3.10"
 dependencies = [
-    # Copyright checking is ament_copyright itself, installed from the ament_lint repo.
+    # ament's own tools, installed from the ament_lint repo, where ament's behavior is the tool:
+    # ament_copyright has no upstream, and ament_cpplint and ament_lint_cmake vendor modified
+    # forks of cpplint and cmakelint that PyPI releases do not match.
     "ament_copyright @ git+https://github.com/ament/ament_lint.git@0.21.2#subdirectory=ament_copyright",
+    "ament_cpplint @ git+https://github.com/ament/ament_lint.git@0.21.2#subdirectory=ament_cpplint",
+    "ament_lint_cmake @ git+https://github.com/ament/ament_lint.git@0.21.2#subdirectory=ament_lint_cmake",
     # C / C++
     "clang-format==19.1.7",
     "clang-tidy==22.1.8",
     "cppcheck==1.5.1",
-    "cpplint==2.0.2",
-    # CMake
-    "cmakelint==1.4.3",
     # Python
     "flake8==7.4.1",
     "flake8-blind-except==0.2.1",

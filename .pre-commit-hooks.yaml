@@ -32,7 +32,8 @@
   name: ROS Code Standard [cpplint]
   language: python
   description: >
-    cpplint with the ament_cpplint filters, line length 100, and ROS header guard convention.
+    ament_cpplint, ament's vendored cpplint fork with its filters, line length 100,
+    and ROS header guard convention.
     Accepts args: [--filters=-category], [--linelength, "100"], [--root, PATH].
   entry: ros_code_standard cpplint
   types_or: [c, c++]
@@ -50,7 +51,7 @@
   name: ROS Code Standard [lint_cmake]
   language: python
   description: >
-    cmakelint with the ament_lint_cmake line length of 140.
+    ament_lint_cmake, ament's vendored cmakelint fork with its line length of 140.
     Accepts args: [--filters=-category,+category].
   entry: ros_code_standard lint_cmake
   # .cmake.in files have no identify tag, so match on filename instead of types.

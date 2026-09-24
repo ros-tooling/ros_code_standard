@@ -12,15 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
+import argparse
 from pathlib import Path
 
-import cpplint
-
-from ros_code_standard.checkers.cpplint import (
-    custom_get_header_guard_cpp_variable,
-    get_file_groups,
-)
+from ros_code_standard.checkers.cpplint import CpplintGroup
 from ros_code_standard.runner import main
 
 CPP_PKG = Path(__file__).parent.parent / 'test_files' / 'cpp_pkg'
@@ -28,6 +23,11 @@ HEADER = str(CPP_PKG / 'include' / 'cpp_pkg' / 'greeter.hpp')
 SOURCE = str(CPP_PKG / 'src' / 'greeter.cpp')
 
 COPYRIGHT = '// Copyright 2026 Polymath Robotics, Inc.\n'
+
+
+def _args(files: list[str], **overrides) -> argparse.Namespace:
+    defaults = {'files': files, 'filters': None, 'linelength': None, 'root': None}
+    return argparse.Namespace(**{**defaults, **overrides})
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -43,13 +43,13 @@ def _write(path: Path, content: str) -> str:
     return str(path)
 
 
-def _header(guard: str) -> str:
+def _header(guard: str, body: str = 'int foo();\n') -> str:
     return (
         '\n'
         f'#ifndef {guard}\n'
         f'#define {guard}\n'
         '\n'
-        'int foo();\n'
+        f'{body}'
         '\n'
         f'#endif  // {guard}\n'
     )
@@ -62,11 +62,14 @@ def test_fixture_package_passes():
     assert main(['cpplint', HEADER, SOURCE]) == 0
 
 
-def test_non_cpp_files_are_ignored():
-    assert get_file_groups(['README.md', 'setup.py']) == {}
+def test_no_files_is_skipped():
+    # ament_cpplint would otherwise walk the current directory.
+    result = CpplintGroup().run(_args([]))[0]
+    assert result.skipped
+    assert result.cmd is None
 
 
-# --- header guard convention ---
+# --- the ROS header guard convention ---
 
 
 def test_double_underscore_header_guard_passes(tmp_path):
@@ -81,81 +84,84 @@ def test_single_underscore_header_guard_fails(tmp_path):
     assert main(['cpplint', path]) == 1
 
 
-def test_header_guard_strips_the_root(tmp_path, monkeypatch):
-    repo = _make_repo(tmp_path)
-    path = _write(repo / 'include' / 'pkg' / 'foo.hpp', _header('PKG__FOO_HPP_'))
-    monkeypatch.setattr(cpplint, '_root', str(repo / 'include'))
-    assert custom_get_header_guard_cpp_variable(path) == 'PKG__FOO_HPP_'
-
-
-def test_header_guard_keeps_the_repository_path_without_a_root(tmp_path, monkeypatch):
-    repo = _make_repo(tmp_path)
-    path = _write(repo / 'include' / 'pkg' / 'foo.hpp', _header('PKG__FOO_HPP_'))
-    monkeypatch.setattr(cpplint, '_root', None)
-    assert custom_get_header_guard_cpp_variable(path) == 'INCLUDE__PKG__FOO_HPP_'
-
-
-# --- root grouping ---
-
-
-def test_include_and_src_are_separate_groups(tmp_path):
-    repo = _make_repo(tmp_path)
-    header = _write(repo / 'include' / 'pkg' / 'foo.hpp', _header('PKG__FOO_HPP_'))
-    source = _write(repo / 'src' / 'foo.cpp', '\nint foo() {return 0;}\n')
-    assert get_file_groups([header, source]) == {
-        'include': [header],
-        'src': [source],
-    }
-
-
-def test_two_packages_share_no_group(tmp_path):
+def test_two_packages_each_get_their_own_root(tmp_path):
     repo = _make_repo(tmp_path)
     one = _write(repo / 'one' / 'include' / 'one' / 'foo.hpp', _header('ONE__FOO_HPP_'))
     two = _write(repo / 'two' / 'include' / 'two' / 'foo.hpp', _header('TWO__FOO_HPP_'))
-    assert get_file_groups([one, two]) == {
-        os.path.join('one', 'include'): [one],
-        os.path.join('two', 'include'): [two],
-    }
     assert main(['cpplint', one, two]) == 0
 
 
-def test_longest_root_wins(tmp_path):
+# --- checks cpplint 2.0 added that the ament style does not satisfy ---
+
+
+def test_cpp17_header_and_compact_return_pass(tmp_path):
     repo = _make_repo(tmp_path)
-    nested = repo / 'src' / 'vendor' / 'include' / 'pkg' / 'foo.hpp'
-    path = _write(nested, _header('PKG__FOO_HPP_'))
-    assert list(get_file_groups([path])) == [os.path.join('src', 'vendor', 'include')]
+    body = (
+        '#include <filesystem>\n'
+        '#include <memory>\n'
+        '#include <mutex>\n'
+        '\n'
+        'class Guard\n'
+        '{\n'
+        'public:\n'
+        '  void release()\n'
+        '  {\n'
+        '    if (!mutex_) {return;}\n'
+        '    mutex_.reset();\n'
+        '  }\n'
+        '\n'
+        '  std::filesystem::path path() const {return path_;}\n'
+        '\n'
+        'private:\n'
+        '  std::shared_ptr<std::mutex> mutex_;\n'
+        '  std::filesystem::path path_;\n'
+        '};\n'
+    )
+    path = _write(repo / 'include' / 'pkg' / 'guard.hpp', _header('PKG__GUARD_HPP_', body))
     assert main(['cpplint', path]) == 0
-
-
-def test_file_without_a_root_subfolder_keeps_its_repository_path(tmp_path):
-    repo = _make_repo(tmp_path)
-    path = _write(repo / 'inc' / 'pkg' / 'foo.hpp', _header('PKG__FOO_HPP_'))
-    assert list(get_file_groups([path])) == ['']
-    assert main(['cpplint', path]) == 1
 
 
 # --- optional arguments ---
 
 
-def test_root_argument_overrides_the_computed_root(tmp_path):
+def test_filters_reaches_the_command_line():
+    result = CpplintGroup().run(_args([SOURCE], filters='-build/include_order'))[0]
+    assert '--filters=-build/include_order' in result.cmd
+    assert result.passed
+
+
+def test_filters_suppresses_a_finding(tmp_path):
     repo = _make_repo(tmp_path)
-    path = _write(repo / 'inc' / 'pkg' / 'foo.hpp', _header('PKG__FOO_HPP_'))
-    assert main(['cpplint', '--root', str(repo / 'inc'), path]) == 0
+    long_line = '\nint foo() {return %s;}\n' % ('0' * 100)
+    path = _write(repo / 'src' / 'foo.cpp', long_line)
+    assert main(['cpplint', path]) == 1
+    assert main(['cpplint', '--filters=-whitespace/line_length', path]) == 0
 
 
-def test_line_length_defaults_to_100(tmp_path):
+def test_linelength_reaches_the_command_line():
+    result = CpplintGroup().run(_args([SOURCE], linelength=120))[0]
+    assert result.cmd[result.cmd.index('--linelength') + 1] == '120'
+    assert result.passed
+
+
+def test_linelength_raises_the_limit(tmp_path):
     repo = _make_repo(tmp_path)
     path = _write(repo / 'src' / 'foo.cpp', '\nint foo() {return %s;}\n' % ('0' * 100))
     assert main(['cpplint', path]) == 1
-
-
-def test_line_length_argument_raises_the_limit(tmp_path):
-    repo = _make_repo(tmp_path)
-    path = _write(repo / 'src' / 'foo.cpp', '\nint foo() {return %s;}\n' % ('0' * 100))
     assert main(['cpplint', '--linelength', '200', path]) == 0
 
 
-def test_filters_argument_is_appended_to_the_defaults(tmp_path):
+def test_root_reaches_the_command_line():
+    include_dir = str(CPP_PKG / 'include')
+    result = CpplintGroup().run(_args([HEADER], root=include_dir))[0]
+    assert result.cmd[result.cmd.index('--root') + 1] == include_dir
+    assert result.passed
+
+
+def test_root_overrides_the_computed_root(tmp_path):
     repo = _make_repo(tmp_path)
-    path = _write(repo / 'src' / 'foo.cpp', '\nint foo() {return %s;}\n' % ('0' * 100))
-    assert main(['cpplint', '--filters=-whitespace/line_length', path]) == 0
+    # 'inc' is not one of the directory names ament_cpplint roots on, so the guard is
+    # expected to carry the whole repository path until --root says otherwise.
+    path = _write(repo / 'inc' / 'pkg' / 'foo.hpp', _header('PKG__FOO_HPP_'))
+    assert main(['cpplint', path]) == 1
+    assert main(['cpplint', '--root', str(repo / 'inc'), path]) == 0
