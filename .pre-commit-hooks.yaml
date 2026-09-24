@@ -72,8 +72,9 @@
   language: python
   description: >
     uncrustify with the ament_code_style configuration. Reformats in place and fails
-    so you re-stage. Requires uncrustify on PATH. Accepts args: [--linelength, "100"]
-    and [--language, C++].
+    so you re-stage. The binary ships with the hook for Linux x86_64/aarch64 and
+    macOS x86_64/arm64. Accepts args: [--uncrustify-version, "0.72.0"] for humble,
+    [--system-uncrustify], [--linelength, "100"], and [--language, C++].
   entry: ros_code_standard uncrustify
   types_or: [c, c++]
 

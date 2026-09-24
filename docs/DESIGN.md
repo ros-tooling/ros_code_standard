@@ -134,8 +134,7 @@ pre-commit's exit code is the test result.
 ### Shared virtualenv
 
 As in polymath_code_standard, every hook declares the same `language: python` and no `additional_dependencies`, so pre-commit builds one virtualenv for the whole repo regardless of which hooks a consumer picks.
-All tools are installed up front.
-The one exception is uncrustify, discussed below.
+All tools are installed up front, including the prebuilt uncrustify wheel for the current platform.
 
 ## Challenges
 
@@ -146,26 +145,29 @@ These are the linters that need more than "install from PyPI and pass a config".
 uncrustify is the primary ROS 2 C++ formatter, and it is the hardest to ship.
 There is no PyPI package.
 The upstream GitHub release only publishes source archives and Windows zips.
-ROS builds it from source through `uncrustify_vendor`.
+ROS builds it from source through `uncrustify_vendor`, and the version it pins is part of the standard: rolling and jazzy pin 0.78.1, humble pins 0.72.0, and the two produce different output on real code.
+Ubuntu 22.04's apt package is 0.72.0, so on a 22.04 machine the distro binary fails rcpputils files that rolling's CI accepts.
 
-Phase 1 (this iteration) mirrors how `polymath-go` handles the Go toolchain:
-`ros-uncrustify` looks for `uncrustify` on `PATH`, fails with an install hint if absent, and picks `ament_code_style_0_78.cfg` or `ament_code_style_0_72.cfg` from `uncrustify --version` exactly as `ament_uncrustify` does.
-Ubuntu 24.04 ships 0.78.1 and Ubuntu 22.04 ships 0.72.0, so both configs matter.
+The first implementation took `uncrustify` from `PATH` and picked the ament config from `uncrustify --version`, exactly as `ament_uncrustify` does.
+That reproduces ament's behavior, and also ament's failure: it matches whatever the machine has, not what the distribution pins.
 
-Phase 2 options, for follow-up:
+Options considered:
 
-1. **Host prebuilt binaries** in this repo's GitHub releases and download them on first use with pinned checksums, the `golangci-lint` pattern.
-   We control the build, users get a consistent 0.78.1 everywhere.
-   Cost: a release job that cross-compiles for linux/amd64, linux/arm64, and macOS.
+1. **Host prebuilt binaries** in this repo's GitHub releases and download them on first use with pinned checksums, the `golangci-lint` pattern from polymath_code_standard.
 2. **Build from source into the hook virtualenv** on first use.
-   Needs cmake, a C++ compiler, and a Python 3 interpreter, and no third-party libraries.
-   Measured on 0.78.1 during implementation: 43 CPU-seconds, about 12 s on four cores, for a 1.4 MiB stripped binary that links only libstdc++ and libc.
-   Cheap enough to be a real fallback where no prebuilt binary exists.
-3. **Publish a wheel** the way `clang-format`, `clang-tidy`, and `cppcheck` wheels are built with scikit-build-core.
-   Cleanest for consumers.
-   Most upfront work and a PyPI project to maintain.
+   Measured on 0.78.1: 43 CPU-seconds, about 12 s on four cores, for a 1.4 MiB stripped binary that links only libstdc++ and libc, needing cmake, a C++ compiler, and Python.
+   Rejected: consumers should not need a C++ toolchain to run a linter, and a first-commit build step is a poor experience.
+3. **Publish wheels** containing the binaries, the way the `clang-format`, `clang-tidy`, and `cppcheck` wheels are built with scikit-build-core.
 
-Recommendation: option 1, because the download-and-verify code already exists in polymath_code_standard.
+Decision: option 3, hosted on this repo rather than PyPI.
+A wheel project under `uncrustify_wheel/` bundles both pinned versions in one `py3-none-<platform>` wheel per platform (manylinux x86_64 and aarch64, macOS x86_64 and arm64).
+A GitHub Action builds it with cibuildwheel whenever that directory changes and publishes the wheels to a release tagged `uncrustify-bin-v<version>`.
+The hook depends on those wheels by direct URL with `sys_platform` and `platform_machine` markers, so pip installs the right one into the shared virtualenv and pre-commit needs no extra configuration.
+`--uncrustify-version` selects 0.78.1 (default, rolling and jazzy) or 0.72.0 (humble), and `--system-uncrustify` opts out to the `PATH` binary for unsupported platforms.
+
+Consequences: a Windows consumer has no bundled binary and must use `--system-uncrustify`.
+Bumping uncrustify means editing two pins and the project version under `uncrustify_wheel/`, pushing, and then updating the dependency URLs in the hook's `pyproject.toml` once the release exists.
+Until the first release is published the hook's dependency lines cannot be resolved, so wiring them is the last step of the rollout.
 
 ### clang-tidy: needs a compilation database
 

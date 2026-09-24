@@ -27,8 +27,8 @@ Set up pre-commit hooks in the repository:
 pre-commit install
 ```
 
-`ros-uncrustify` also needs `uncrustify` on `PATH`.
-See its [hook reference](#ros-uncrustify) entry.
+Nothing else is needed on Linux x86_64 and aarch64 or macOS x86_64 and arm64.
+The uncrustify binary ships with the hook.
 
 ## Configuration
 
@@ -144,8 +144,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      # Only needed for ros-uncrustify.
-      - run: sudo apt-get install -y --no-install-recommends uncrustify
       - uses: pre-commit/action@v3.0.1
 ```
 
@@ -310,8 +308,14 @@ Unlike bare `pydocstyle`, files whose names begin with `test_` are checked.
 ### `ros-uncrustify`
 
 Runs `uncrustify` with the `ament_code_style` configuration, the same one `ament_uncrustify` ships.
-`uncrustify --version` selects the config: 0.78.1 and newer get `ament_code_style_0_78.cfg`, anything older gets `ament_code_style_0_72.cfg`.
-Ubuntu 24.04 ships 0.78.1 and Ubuntu 22.04 ships 0.72.0, so both are supported.
+
+The uncrustify version decides the output, not just the configuration, so the hook ships its own binary rather than using whatever is installed.
+`--uncrustify-version` selects it, and the matching ament config follows: 0.78.1 uses `ament_code_style_0_78.cfg`, 0.72.0 uses `ament_code_style_0_72.cfg`.
+
+| ROS 2 distribution | `--uncrustify-version` |
+|---|---|
+| rolling, jazzy | `0.78.1` (the default) |
+| humble | `0.72.0` |
 
 Files are split into a `-l C` group (`.c`, `.cc`, `.h`, `.hh`) and a `-l CPP` group (`.cpp`, `.cxx`, `.hpp`, `.hxx`), matching `ament_uncrustify`, and each group is checked separately.
 A C++ header named `.h` is therefore parsed as C, as in ament.
@@ -322,20 +326,21 @@ This differs from `ament_uncrustify`, which prints the diff and leaves the files
 Nothing else is written to your repository.
 
 > [!NOTE]
-> Requires `uncrustify` on `PATH`.
-> There is no PyPI package and no upstream Linux binary, so it cannot be installed into the hook virtualenv.
-> Ubuntu and Debian: `sudo apt install uncrustify`.
-> macOS: `brew install uncrustify`.
-> ROS 2 builds it through [`uncrustify_vendor`](https://github.com/ros2/uncrustify_vendor), so sourcing a ROS 2 installation also puts a suitable version on `PATH`.
+> The uncrustify binary ships with the hook, as the `ros-uncrustify-bin` wheel, for Linux x86_64, Linux aarch64, macOS x86_64, and macOS arm64.
+> Nothing needs to be installed on those platforms.
+> Anywhere else, install uncrustify yourself and add `--system-uncrustify`, which uses the binary on `PATH` and picks the ament config from the version it reports.
+> A distribution package may not match your ROS 2 distribution's pin: Ubuntu 22.04 packages 0.72.0, and it reformats files that rolling's 0.78.1 accepts.
 
 **Optional:**
 
+- `--uncrustify-version {0.78.1,0.72.0}` -- Which bundled uncrustify to run (default `0.78.1`). Ignored with `--system-uncrustify`
+- `--system-uncrustify` -- Use the `uncrustify` on `PATH` instead of the bundled one, with the ament config chosen from the version it reports
 - `--linelength N` -- Override the config's `code_width` of 100
 - `--language {C,C++,CPP}` -- Force uncrustify's `-l` instead of choosing it per file extension
 
 ```yaml
 - id: ros-uncrustify
-  args: [--language, C++]
+  args: [--uncrustify-version, '0.72.0', --language, C++]
 ```
 
 ---

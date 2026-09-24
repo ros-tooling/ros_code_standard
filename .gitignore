@@ -1,4 +1,16 @@
-/*.egg-info/
+# Python
 __pycache__/
-/.pytest_tmp*/
+*.egg-info/
 /.venv/
+/.pytest_tmp*/
+.pytest_cache/
+.mypy_cache/
+
+# Wheel builds under uncrustify_wheel/ (local `uv build`, cibuildwheel, scikit-build-core)
+uncrustify_wheel/dist/
+uncrustify_wheel/build/
+uncrustify_wheel/_skbuild/
+uncrustify_wheel/wheelhouse/
+uncrustify_wheel/.venv/
+*.whl
+*.tar.gz
