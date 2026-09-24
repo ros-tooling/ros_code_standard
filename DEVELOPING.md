@@ -64,3 +64,16 @@ Then add a `## <version>` section to `CHANGELOG.md` describing the release.
 
 CI fails PRs where the README pin or the changelog section is missing for the version in `pyproject.toml`.
 On merge to main, CI pushes the tag and publishes a GitHub release whose notes are that changelog section.
+
+### uncrustify binary wheels
+
+`uncrustify_wheel/` builds the `ros-uncrustify-bin` wheels that carry the uncrustify binaries `ros-uncrustify` runs.
+The `Build uncrustify wheels` workflow builds all four platforms on every push to `main` that touches `uncrustify_wheel/`, and publishes them to a release tagged `uncrustify-bin-v<version>` only when that tag does not exist yet.
+Bumping `version` in `uncrustify_wheel/pyproject.toml` is the only way to cut a new one, and the direct-URL dependencies in the root `pyproject.toml` have to be repointed at the new tag in the same change.
+Take the exact wheel filenames from the workflow's "Wheel download URLs" step summary, since auditwheel and delocate decide the final platform tags.
+
+To lint the workflow files locally with the shell and Python rules enabled:
+
+```shell
+uvx --from actionlint-py --with shellcheck-py --with pyflakes actionlint .github/workflows/*.yml
+```

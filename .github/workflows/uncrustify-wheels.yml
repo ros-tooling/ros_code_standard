@@ -1,0 +1,177 @@
+---
+# Builds the `ros-uncrustify-bin` wheels from `uncrustify_wheel/` and publishes them
+# to a GitHub release tagged `uncrustify-bin-v<version>`.
+#
+# Each wheel is `py3-none-<platform>` and bundles the prebuilt uncrustify binaries that
+# `ros-uncrustify` runs, so consumers never build uncrustify and never depend on the
+# version their distribution happens to package.
+# The hook consumes the release assets: this repo's own `pyproject.toml` depends on these
+# wheel URLs directly, with platform markers picking the right one per machine.
+#
+# Every cibuildwheel setting other than the architecture lives in
+# `uncrustify_wheel/pyproject.toml` under `[tool.cibuildwheel]`.
+#
+# A release happens only on `main`, and only when the tag does not exist yet.
+# Bumping `version` in `uncrustify_wheel/pyproject.toml` is how a new release is produced;
+# a push that does not bump it rebuilds the wheels and leaves the existing release alone.
+name: Build uncrustify wheels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - uncrustify_wheel/**
+      - .github/workflows/uncrustify-wheels.yml
+  pull_request:
+    paths:
+      - uncrustify_wheel/**
+      - .github/workflows/uncrustify-wheels.yml
+  workflow_dispatch:
+
+# One run per ref at a time, so two pushes to main cannot race on the same release.
+# Superseded pull request runs are cancelled; main runs queue instead.
+concurrency:
+  group: uncrustify-wheels-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: manylinux x86_64
+            runner: ubuntu-latest
+            arch: x86_64
+            artifact: wheels-manylinux-x86_64
+          # Native arm64 runner, so the aarch64 wheels build without QEMU.
+          - name: manylinux aarch64
+            runner: ubuntu-24.04-arm
+            arch: aarch64
+            artifact: wheels-manylinux-aarch64
+          # macos-13 was retired in December 2025. macos-15-intel is the x86_64
+          # replacement and the last Intel macOS image Actions will offer, through
+          # August 2027.
+          - name: macOS x86_64
+            runner: macos-15-intel
+            arch: x86_64
+            artifact: wheels-macos-x86_64
+          - name: macOS arm64
+            runner: macos-15
+            arch: arm64
+            artifact: wheels-macos-arm64
+    steps:
+      - uses: actions/checkout@v6
+      # The cibuildwheel action brings its own Python, so no setup-python step is needed.
+      - uses: pypa/cibuildwheel@v4.2.1
+        with:
+          package-dir: uncrustify_wheel
+        env:
+          CIBW_ARCHS: ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: build
+    # Pull requests build only. A manual dispatch releases from main and nowhere else.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: Read version and check the tag
+        id: version
+        run: |
+          PYPROJECT=uncrustify_wheel/pyproject.toml
+          # -m1 takes the [project] version, not a 'version' key in a later table.
+          VERSION=$(grep -m1 '^version' "$PYPROJECT" | sed 's/version = "\(.*\)"/\1/')
+          case "$VERSION" in
+            [0-9]*.[0-9]*) ;;
+            *) echo "No version read from $PYPROJECT, got '$VERSION'"; exit 1 ;;
+          esac
+          TAG="uncrustify-bin-v$VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            echo "Tag $TAG already exists, leaving its release untouched."
+            echo "Bump 'version' in uncrustify_wheel/pyproject.toml to publish new wheels."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate SHA256SUMS
+        if: steps.version.outputs.exists == 'false'
+        run: |
+          cd dist
+          sha256sum -- *.whl > SHA256SUMS
+          cat SHA256SUMS
+
+      # Notes list the uncrustify versions actually found inside the wheels, so they
+      # cannot drift from what was built.
+      - name: Publish the release
+        if: steps.version.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          BUNDLED=$(python3 - <<'PY'
+          import glob
+          import posixpath
+          import zipfile
+
+          versions = set()
+          for wheel in glob.glob('dist/*.whl'):
+              with zipfile.ZipFile(wheel) as archive:
+                  for name in archive.namelist():
+                      head, tail = posixpath.split(name)
+                      if posixpath.basename(head) == 'bin' and tail.startswith('uncrustify-'):
+                          versions.add(tail[len('uncrustify-'):])
+          print(', '.join(sorted(versions, reverse=True)))
+          PY
+          )
+          test -n "$BUNDLED" || { echo "No bundled uncrustify binaries found in the wheels"; exit 1; }
+          {
+            echo "Prebuilt uncrustify binaries for \`ros-uncrustify\`, bundled versions: $BUNDLED."
+            echo
+            echo "Wheels:"
+            echo
+            for wheel in dist/*.whl; do
+              echo "- \`$(basename "$wheel")\`"
+            done
+            echo
+            echo "\`SHA256SUMS\` covers every wheel in this release."
+          } > notes.md
+          cat notes.md
+          gh release create "$TAG" --title "$TAG" --notes-file notes.md dist/*.whl dist/SHA256SUMS
+
+      # Task 4.4 pastes these into pyproject.toml as direct-URL dependencies with
+      # platform markers.
+      - name: Print the asset download URLs
+        if: steps.version.outputs.exists == 'false'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |-
+          BASE="${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG"
+          {
+            echo "### Wheel download URLs"
+            echo
+            echo '```'
+            for wheel in dist/*.whl; do
+              echo "$BASE/$(basename "$wheel")"
+            done
+            echo "$BASE/SHA256SUMS"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

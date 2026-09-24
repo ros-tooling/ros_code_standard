@@ -54,6 +54,8 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+# uncrustify_wheel/tests needs the built wheel installed; run it from that directory.
+testpaths = ["tests"]
 markers = [
     # Needs a tool that is not in the virtualenv, such as uncrustify on PATH. Deselect with -m 'not external'.
     "external: test requires an external tool on PATH",

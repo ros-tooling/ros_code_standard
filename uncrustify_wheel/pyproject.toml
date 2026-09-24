@@ -1,0 +1,60 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "ros-uncrustify-bin"
+version = "0.1.0"
+description = "Prebuilt uncrustify binaries for the ros_code_standard pre-commit hooks"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "Polymath Robotics, Inc." }]
+keywords = ["uncrustify", "ros", "ament", "pre-commit"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+# No build-dir on purpose: a CMake cache holds absolute paths, and cibuildwheel copies the
+# project into a container under a different prefix, where a leftover cache aborts the build.
+
+# The binaries are architecture specific but call no Python C API, so one py3 wheel per
+# platform covers every interpreter.
+wheel.py-api = "py3"
+wheel.platlib = true
+wheel.packages = ["src/ros_uncrustify_bin"]
+# uncrustify 0.72.0 declares cmake_minimum_required(VERSION 3.2) and uses FindPythonInterp,
+# neither of which CMake 4 accepts, so the build pins the 3.x series.
+cmake.version = ">=3.22,<4"
+sdist.include = ["CMakeLists.txt"]
+
+[tool.cibuildwheel]
+# The wheel holds no Python extension, so a single interpreter produces the py3 wheel that
+# every supported interpreter installs.
+build = "cp312-*"
+# cp312-* already excludes PyPy and every other implementation; musl and Windows are the
+# two that still need saying no to.
+skip = ["*-musllinux_*", "*-win*"]
+build-frontend = "build"
+# glibc 2.17, so the wheels run on Ubuntu 22.04 and 24.04 and everything newer.
+manylinux-x86_64-image = "manylinux2014"
+manylinux-aarch64-image = "manylinux2014"
+test-requires = ["pytest"]
+# {package} is the directory passed to cibuildwheel, so this works from any working directory.
+test-command = [
+    "pytest {package}/tests",
+    "python -c \"import ros_uncrustify_bin as u, subprocess as s; out = s.run([str(u.binary('0.78.1')), '--version'], capture_output=True, text=True).stdout; print(out); assert out.startswith('Uncrustify-0.78.1'), out\"",
+    "python -c \"import ros_uncrustify_bin as u, subprocess as s; out = s.run([str(u.binary('0.72.0')), '--version'], capture_output=True, text=True).stdout; print(out); assert out.startswith('Uncrustify-0.72.0'), out\"",
+]
+
+[tool.cibuildwheel.macos]
+# The oldest deployment target the GitHub macOS runners' toolchain still supports.
+environment = { MACOSX_DEPLOYMENT_TARGET = "11.0" }

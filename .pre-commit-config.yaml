@@ -14,6 +14,8 @@ repos:
       - id: ros-lint-cmake
       - id: ros-pep257
       - id: ros-uncrustify
+        # Until the ros-uncrustify-bin wheel is wired into pyproject.toml (plan task 4.4).
+        args: [--system-uncrustify]
       - id: ros-xmllint
       - id: ros-clang-format
       - id: ros-mypy
