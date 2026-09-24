@@ -8,7 +8,7 @@
     It deliberately declares no ament_lint test dependencies: the linters run from
     pre-commit instead of from colcon test.
   </description>
-  <maintainer email="opensource@polymathrobotics.com">Polymath Robotics</maintainer>
+  <maintainer email="test@example.com">Test Example</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

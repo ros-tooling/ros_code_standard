@@ -7,7 +7,7 @@
     A package manifest in the older format 2, kept as a fixture so the bundled
     package_format2.xsd is exercised alongside the format 3 schema.
   </description>
-  <maintainer email="opensource@polymathrobotics.com">Polymath Robotics</maintainer>
+  <maintainer email="test@example.com">Test Example</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

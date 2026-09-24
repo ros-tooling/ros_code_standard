@@ -38,7 +38,7 @@ This block is equivalent to `ament_lint_common`.
 ```yaml
 ---
 repos:
-  - repo: https://github.com/polymathrobotics/ros_code_standard
+  - repo: https://github.com/ros-tooling/ros_code_standard
     rev: v0.1.0
     hooks:
       - id: ros-copyright
